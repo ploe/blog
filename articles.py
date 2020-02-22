@@ -15,11 +15,25 @@ import yaml
 class InvalidItem(Exception):
     """Raised when a value in an article attribute is incorrect"""
 
+
 class Articles:
     """"Articles class"""
     def __init__(self, directory):
         self.directory = directory
         self.source = os.path.join(directory, '*.yaml')
+
+    def cli_get_collection(self, args):  # pylint: disable=W0613
+        """Command line hook for get_collection method"""
+        # disabled W0613 as cli hooks require same signature
+        return self.get_collection()
+
+    def cli_get_item(self, args):
+        """Command line hook for get_item method"""
+        slug = args.get_item_slug
+        if not slug:
+            sys.exit("'--get-item-slug' flag required when using method 'get_item'")
+
+        return self.get_item(slug)
 
     def get_collection(self):
         """Returns a list of uri's to articles in the directory"""
@@ -41,8 +55,11 @@ class Articles:
         basename = self.to_basename_from_slug(slug)
         path = self.to_path_from_basename(basename)
 
-        with open(path) as filehandle:
-            item = yaml.load(filehandle, Loader=yaml.FullLoader)
+        try:
+            with open(path) as filehandle:
+                item = yaml.load(filehandle, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            raise InvalidItem
 
         item['slug'] = slug
         item['mtime'] = self.to_mtime(path)
@@ -108,22 +125,33 @@ class Articles:
             'title': str(item['title'])
         }
 
+
 def _main():
     parser = argparse.ArgumentParser()
     parser.add_argument("method", help="The method you wish to call")
     parser.add_argument("directory",
                         help="Directory containing YAML article files")
+    parser.add_argument(
+        "--get-item-slug",
+        default=None,
+        help=
+        "If calling get_item this is the slug to pass as the first parameter")
+
     args = parser.parse_args()
 
     articles = Articles(args.directory)
 
-    method = args.method
+    method = "cli_{method}".format(method=args.method)
+
     func = getattr(articles, method, None)
     if (not func) or (not callable(func)):
-        prompt = "Invalid method {method}".format(method=method)
+        prompt = "Invalid method '{method}'"
+        " - check 'pydoc articles' for command line hooks.".format(
+            method=args.method)
         sys.exit(prompt)
 
-    pprint.pprint(func())
+    # disabled E1102 as literally testing if it's callable
+    pprint.pprint(func(args))  # pylint: disable=E1102
 
 
 if __name__ == '__main__':
