@@ -41,9 +41,8 @@ class Articles:
         collection = sorted(collection, key=lambda i: i['mtime'], reverse=True)
         return collection
 
-    def get_item(self, slug):
+    def get_item(self, basename):
         """Returns a validated article item"""
-        basename = self.to_basename_from_slug(slug)
         path = self.to_path_from_basename(basename)
 
         try:
@@ -52,7 +51,7 @@ class Articles:
         except FileNotFoundError:
             raise InvalidItem
 
-        item['slug'] = slug
+        item['slug'] = self.to_slug_from_basename(basename)
         item['mtime'] = self.to_mtime(path)
 
         return self.validate_item(item)
