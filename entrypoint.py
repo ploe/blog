@@ -10,6 +10,7 @@ APP = Flask(__name__)
 PATH = os.path.join('./examples/unittest/articles')
 API = articles.Articles(PATH)
 
+
 @APP.route("/api/articles", methods=['GET'])
 def get_articles_collection():
     """Return a JSON array of Article slugs"""

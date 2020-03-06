@@ -1,0 +1,10 @@
+#! /usr/bin/env sh
+
+python -m unittest -b test_articles.py
+
+passed=$?
+if [ $passed -ne 0 ]; then
+  exit $passed
+fi
+
+exec gunicorn --bind 0.0.0.0:5000 wsgi:APP
