@@ -4,9 +4,9 @@
 import argparse
 import datetime
 import glob
+import inspect
 import os
 import pprint
-import sys
 import urllib.parse
 
 import yaml
@@ -16,24 +16,15 @@ class InvalidItem(Exception):
     """Raised when a value in an article attribute is incorrect"""
 
 
+class InvalidMethod(Exception):
+    """Raised when an invalid method is requested from the cli"""
+
+
 class Articles:
     """"Articles class"""
     def __init__(self, directory):
         self.directory = directory
         self.source = os.path.join(directory, '*.yaml')
-
-    def cli_get_collection(self, args):  # pylint: disable=W0613
-        """Command line hook for get_collection method"""
-        # disabled W0613 as cli hooks require same signature
-        return self.get_collection()
-
-    def cli_get_item(self, args):
-        """Command line hook for get_item method"""
-        slug = args.get_item_slug
-        if not slug:
-            sys.exit("'--get-item-slug' flag required when using method 'get_item'")
-
-        return self.get_item(slug)
 
     def get_collection(self):
         """Returns a list of uri's to articles in the directory"""
@@ -65,6 +56,61 @@ class Articles:
         item['mtime'] = self.to_mtime(path)
 
         return self.validate_item(item)
+
+    def _get_method(self, name):
+        if name.startswith('_'):
+            raise InvalidMethod
+
+        method = getattr(self, name, None)
+        if (not method) or (not callable(method)):
+            raise InvalidMethod
+
+        return method
+
+    @classmethod
+    def main(cls, args=None):
+        """When we call the module as from the cli this is the method we use
+        to parse the arguments and instantiate the class"""
+
+        positionals = [{
+            'help': 'The method you wish to call',
+            'name': 'method',
+        }, {
+            'help': 'Directory containing YAML article files',
+            'name': 'directory'
+        }]
+
+        flags = {
+            '--basename': {
+                'help': "Common name for an article",
+                'type': str
+            },
+            '--enabled': {
+                'action': 'store_true',
+                'help': "Attribute 'enabled' on article",
+            },
+            '--path': {
+                'help': "Path to an article",
+                'type': str
+            },
+            '--slug': {
+                'help': "URI slug to pass to method",
+                'type': str
+            }
+        }
+
+        if not args:
+            args = _parse_args(positionals, flags)
+
+        articles = cls(args['directory'])
+
+        # disabled W0212 as _get_method should not be callable from cli
+        method = articles._get_method(args['method'])  # pylint: disable=W0212
+        kwargs = _parse_kwargs(method, args)
+
+        pprint.pprint(method(**kwargs))
+
+        return cls
 
     @staticmethod
     def to_basename_from_path(path):
@@ -126,33 +172,30 @@ class Articles:
         }
 
 
-def _main():
+def _parse_args(positionals, flags):
     parser = argparse.ArgumentParser()
-    parser.add_argument("method", help="The method you wish to call")
-    parser.add_argument("directory",
-                        help="Directory containing YAML article files")
-    parser.add_argument(
-        "--get-item-slug",
-        default=None,
-        help=
-        "If calling get_item this is the slug to pass as the first parameter")
+    for params in positionals:
+        name = params.pop('name')
+        parser.add_argument(name, **params)
 
-    args = parser.parse_args()
+    for flag, params in flags.items():
+        parser.add_argument(flag, **params)
 
-    articles = Articles(args.directory)
+    return vars(parser.parse_args())
 
-    method = "cli_{method}".format(method=args.method)
 
-    func = getattr(articles, method, None)
-    if (not func) or (not callable(func)):
-        prompt = "Invalid method '{method}'"
-        " - check 'pydoc articles' for command line hooks.".format(
-            method=args.method)
-        sys.exit(prompt)
+def _parse_kwargs(func, args):
+    sig = inspect.signature(func)
+    kwargs = {}
+    for key, parameter in sig.parameters.items():
+        if parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                              inspect.Parameter.KEYWORD_ONLY):
+            value = args.get(key, None)
+            if value is not None:
+                kwargs[key] = value
 
-    # disabled E1102 as literally testing if it's callable
-    pprint.pprint(func(args))  # pylint: disable=E1102
+    return kwargs
 
 
 if __name__ == '__main__':
-    _main()
+    Articles.main()
