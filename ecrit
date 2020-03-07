@@ -1,6 +1,8 @@
 #! /usr/bin/env sh
 
-python -m unittest -b test_articles.py
+. venv/bin/activate
+
+python -m unittest -b tests/test_*.py
 
 passed=$?
 if [ $passed -ne 0 ]; then
